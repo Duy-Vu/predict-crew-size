@@ -1,0 +1,119 @@
+---
+title: "Predict crew size"
+output: html_notebook
+---
+
+Dependent Variable: Crew Size (100s)  
+Predictor Variables: Age (2013 Year Built), Tonnage (1000s of Tons), Passengers
+(100s), Length (100s of feet), Cabins (100s), Passenger Density (Passengers/Space)
+
+```{r}
+cruise <- read.fwf("cruise.txt", width=c(20,20,rep(8,7)), col.names=c("ship","cline","age","tonnage","passengers","length","cabins","passdens","crew"))
+attach(cruise)
+head(cruise)
+```
+
+# Explanatory data analysis
+```{r}
+hist(age, main="Histogram of age", xlab="Ship age (2013 year built)", col=1)
+hist(tonnage, main="Histogram of tonnage", xlab="Cruise cargo-carrying capacity (1000s of tons)", col=2)
+hist(passengers, main="Histogram of amount of passengers", xlab="Number of passengers", col=3)
+hist(length, main="Histogram of length", xlab="Ship length (100s of feet)", col=4)
+hist(cabins, main="Histogram of cabins", xlab="Number of cabins (100s)", col=5)
+hist(passdens, main="Histogram of passenger density", xlab="Passenger density (passengers/space)", col=6)
+
+hist(crew, main="Histogram of crew size", xlab="Number of crew members (100s)", col=7) #crew: response variable
+```
+
+```{r}
+# Scatterplot and correlation matrix 
+par(mfrow = c(1, 1))
+plot(cruise[,-2:-1])
+
+round(cor(cruise[,-2:-1]),2) 
+```
+Variables show strong linear relationship with *crew*:
+  
+  * cabins (0.95)
+  * tonnage (0.93)
+  * passengers (0.92)
+  * length (0.90) 
+
+
+# Modelling
+```{r}
+# Full model
+lm.crew.full <- lm(crew ~ age + tonnage + passengers + length + cabins + passdens, data=cruise)
+summary(lm.crew.full)
+
+```
+
+# Diagnostics
+```{r}
+plot(lm.crew.full)
+
+resid.crew <- lm.crew.full$residuals
+fitted.values <- fitted(lm.crew.full)
+
+qqnorm(scale(resid.crew))
+qqline(scale(resid.crew))
+
+
+plot(fitted.values, resid.crew, xlab = "Crew size", ylab = "Residual", main="Residuals vs. ﬁtted values", pch = 19)
+abline(h=0)
+
+par(mfrow=c(2,2))
+
+plot(cabins, resid.crew, xlab = "cabin", ylab = "Residual", main="Residuals vs. predictor cabin", pch = 19)
+abline(h=0)
+
+plot(tonnage, resid.crew, xlab = "tonnage", ylab = "Residual", main="Residuals vs. predictor tonnage", pch = 19)
+abline(h=0)
+
+plot(passengers, resid.crew, xlab = "passengers", ylab = "Residual", main="Residuals vs. predictor passengers", pch = 19)
+abline(h=0)
+
+plot(length, resid.crew, xlab = "length", ylab = "Residual", main="Residuals vs. predictor length", pch = 19)
+abline(h=0)
+```
+In general, the full model fits the data well, is able to explain 92% (from R-squared) of the data variance. This can be shown from the normal probability plot of residuals which indicates that the error terms are normally distributed. Moreover, we can see from the residuals vs. predictor as well as residuals vs. ﬁtted values plots that most of the residuals scatter around the 0 line, indicating constant error variance. However, these plots also show 1 outlier with residuals around 6, a high leverage point but not an outlier (extreme predictor values for cabin, tonnage, passengers), 2 abnormal points with high residuals but having predictor (at least (cabin, tonnage, passengers, length) values around their expected values, and .
+
+
+```{r}
+plot(fitted.values, rstudent(lm.crew.full), xlab = "Fitted value", ylab = "Studentized Residual")
+abline(h=0)
+
+I = influence.measures(lm.crew.full)
+summary(I)
+
+cook = I$infmat[,10]
+plot(cook, type="h", lwd=3, col="red", ylab = "Cook’s Distance")
+```
+Again, the studentized residuals and Cook’s Distance show the same result, and looking through the data, we can identify that outlier data is cruise no. 4 named "Conquest".
+
+# Try to find smaller, better model
+```{r}
+lm.crew.mini <- lm(crew ~ cabins)
+step(lm.crew.mini, scope = list(lower = lm.crew.mini,
+                                upper = lm.crew.full,
+                                direction="forward")
+     )
+
+step(lm.crew.full, scope = list(lower = lm.crew.mini, 
+                                upper = lm.crew.full,
+                                direction="backward")
+     )
+```
+
+```{r}
+AIC.result = c(28.82, 9.87, 0.06, -2.06)
+ommitted = c(-0.94, 1.05)
+
+plot(1:4, AIC.result, xlim=c(1,6), type="l", xaxt="n", xlab ="", main="Forward Stepwise AIC Plot")
+points(1:4, AIC.result, pch = 16)
+points(5:6, ommitted)
+abline(h = -2.06, lty = 2)
+axis(1, at = 1:6, labels = c("cabins", "length", "passengers", "tonnage", "passdens", "age"))
+```
+And we choose the model with lowest AIC which has 4 predictors: cabins, length, passengers, tonnage whose coefficients are 0.79084, 0.39755, -0.14985, 0.01632 respectively and an intercept of -0.81871
+
